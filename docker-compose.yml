@@ -1,0 +1,113 @@
+# =============================================================================
+# Auto-Pentest — full stack (MongoDB + Redis + Scanner API + Frontend)
+#
+# Run it (pulls the prebuilt images from Docker Hub):
+#     docker compose up -d
+# Then open http://localhost:3000
+#
+# Build from source instead of pulling:
+#     docker compose up -d --build
+#
+# All four services talk to each other over the private "pentest" bridge
+# network using their service names (mongodb, redis, scanner). Only the
+# scanner (8000) and frontend (3000) are published to the host.
+# =============================================================================
+
+services:
+  mongodb:
+    # Your namespaced copy of the official mongo:6.0 image.
+    image: salamaaa11/auto-pentest-mongodb:latest
+    container_name: pentest-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks: [pentest]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    # Your namespaced copy of the official redis:7-alpine image.
+    image: salamaaa11/auto-pentest-redis:latest
+    container_name: pentest-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks: [pentest]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  scanner:
+    image: salamaaa11/auto-pentest-scanner:latest
+    build:
+      context: ./scanner
+      dockerfile: Dockerfile
+    container_name: pentest-scanner
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # NET_RAW/NET_ADMIN let nmap send raw packets; harmless to keep, and the
+    # scanner still works without them (it falls back to TCP connect scans).
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    environment:
+      # Service-name DNS on the shared bridge network.
+      - MONGODB_URL=mongodb://mongodb:27017
+      - DATABASE_NAME=scanner
+      - REDIS_URL=redis://redis:6379
+      # Nmap tuning (top-1000 ports by default; set NMAP_PORTS=1-65535 for a full scan)
+      - NMAP_TOP_PORTS=1000
+      - NMAP_TIMING=-T4
+      # AI remediation advisor. Key is read from the .env file (auto-loaded by
+      # compose) or the host environment — never baked into the image.
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - NVIDIA_MODEL=${NVIDIA_MODEL:-deepseek-ai/deepseek-v4-flash}
+    networks: [pentest]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    image: salamaaa11/auto-pentest-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the client bundle at build time. The browser runs on the
+        # host, so it reaches the scanner via the published host port.
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: pentest-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks: [pentest]
+    depends_on:
+      - scanner
+
+networks:
+  pentest:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  redis_data:

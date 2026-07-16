@@ -1,0 +1,86 @@
+# ==============================================================================
+# BASE RUNNER : Environnement Python stable et léger
+# ==============================================================================
+FROM python:3.11-slim
+
+# Évite les invites interactives pendant l'installation des paquets apt
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1
+
+# ==============================================================================
+# ÉTAPE 1 : Dépendances système globales (Ne change presque jamais)
+# ==============================================================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    unzip \
+    git \
+    nmap \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
+# ÉTAPE 2 : Installation granulaire des outils de sécurité (1 couche par outil)
+# ==============================================================================
+# ==============================================================================
+# ÉTAPE 2 : Installation granulaire des outils de sécurité (1 couche par outil)
+# ==============================================================================
+
+# --- COUCHE : SUBFINDER ---
+RUN wget https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip \
+    && unzip -o subfinder_2.6.6_linux_amd64.zip \
+    && mv subfinder /usr/local/bin/ \
+    && rm subfinder_2.6.6_linux_amd64.zip
+
+# --- COUCHE : HTTPX (ProjectDiscovery) ---
+# Renomme en httpx-toolkit pour eviter le conflit avec le paquet pip "httpx" (comme sur Kali)
+RUN wget https://github.com/projectdiscovery/httpx/releases/download/v1.6.0/httpx_1.6.0_linux_amd64.zip \
+    && unzip -o httpx_1.6.0_linux_amd64.zip \
+    && mv httpx /usr/local/bin/httpx-toolkit \
+    && rm httpx_1.6.0_linux_amd64.zip
+
+
+
+
+
+
+# --- COUCHE : KATANA ---
+RUN wget https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_linux_amd64.zip \
+    && unzip -o katana_1.1.0_linux_amd64.zip \
+    && mv katana /usr/local/bin/ \
+    && rm katana_1.1.0_linux_amd64.zip
+
+# --- COUCHE : FEROXBUSTER ---
+RUN curl -sL https://raw.githubusercontent.com/epi052/feroxbuster/master/install-nix.sh | bash -s /usr/local/bin
+
+# --- COUCHE : NUCLEI ---
+RUN wget https://github.com/projectdiscovery/nuclei/releases/download/v3.2.9/nuclei_3.2.9_linux_amd64.zip \
+    && unzip -o nuclei_3.2.9_linux_amd64.zip \
+    && mv nuclei /usr/local/bin/ \
+    && rm nuclei_3.2.9_linux_amd64.zip
+    
+# --- COUCHE : TEMPLATES NUCLEI ---
+# On pré-télécharge les templates de vulnérabilités pour éviter que le conteneur 
+# ne perde du temps à le faire à chaque démarrage de scan au runtime.
+RUN nuclei -update-templates
+
+# ==============================================================================
+# ÉTAPE 3 : Dépendances de l'application Python (Déclenchée si requirements.txt change)
+# ==============================================================================
+WORKDIR /app
+
+# On copie UNIQUEMENT le fichier des dépendances d'abord
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ==============================================================================
+# ÉTAPE 4 : Code source (La couche la plus instable, placée tout en bas)
+# ==============================================================================
+# Puisque votre code change souvent pendant le dev, Docker ne reconstruira que cette couche.
+# Note: wordlists/common.txt est inclus ici ; feroxbuster.py le resout via un chemin relatif au projet.
+COPY . .
+
+# The API listens on 8000 (matches the frontend's NEXT_PUBLIC_API_URL default).
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

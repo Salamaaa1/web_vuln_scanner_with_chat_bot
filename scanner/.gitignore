@@ -1,0 +1,68 @@
+# --- Caches Python et Byte-code ---
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# --- Environnements Virtuels (Obligatoire) ---
+.venv/
+venv/
+ENV/
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Configuration Pytest et Tests ---
+.pytest_cache/
+.htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Variables d'environnement (Sécurité / Clés API) ---
+.env
+.env.local
+.env.*.local
+.secret
+*.pem
+
+# --- Fichiers d'Éditeurs / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Distribution / Paquets (Si vous publiez une lib) ---
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+manifest
+
+scanner/.context/
+**/.context/
+
+**/__pycache__
+
+__pycache__
+**/__py**
