@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  Auto-Pentest — one-click launcher (Windows)
+REM  Auto-Pentest - one-click launcher (Windows)
 REM  Pulls the 4 images from Docker Hub, wires them together,
 REM  and starts the whole stack. Just double-click this file
 REM  (or run it in a terminal). Requires Docker Desktop running.
@@ -40,7 +40,7 @@ if errorlevel 1 (
   goto waitmongo
 )
 
-REM Load the AI key from .env if present (optional — enables the Assistant IA tab).
+REM Load the AI key from .env if present (optional - enables the Assistant IA tab).
 REM "eol=#" skips comment lines in the .env file.
 set NVIDIA_API_KEY=
 set NVIDIA_MODEL=deepseek-ai/deepseek-v4-flash
