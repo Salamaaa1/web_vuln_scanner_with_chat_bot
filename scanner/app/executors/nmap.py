@@ -99,7 +99,7 @@ class NmapExecutor(Executor):
         #   NMAP_TIMING     -> timing template (default -T4)
         #   NMAP_TIMEOUT    -> hard timeout in seconds (default 600)
         #   NMAP_EXTRA_ARGS -> extra flags, e.g. "--unprivileged" on cloud hosts
-        #                      (e.g. Render) that don't allow raw sockets
+        #                      (some cloud platforms) that don't allow raw sockets
         ports_spec = os.getenv("NMAP_PORTS", "").strip()
         if ports_spec:
             port_args = ["-p", ports_spec]

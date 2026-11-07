@@ -6,7 +6,7 @@ caching, scan history, and downloadable PDF reports.
 
 ## Deploy online
 
-Free hosting (Vercel + Render + MongoDB Atlas + Upstash): follow **[DEPLOY_FREE.md](DEPLOY_FREE.md)**.
+Dashboard on Vercel, scanner API on an AWS EC2 server, MongoDB Atlas + Upstash Redis: follow **[DEPLOY.md](DEPLOY.md)**.
 
 ## Run it on any PC (no source code needed)
 

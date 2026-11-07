@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// Free hosting (e.g. Render) puts the API to sleep after a period without
-// traffic; the first request then takes up to ~1 minute while it wakes up.
-// This banner pings the API on page load and tells the visitor what is
-// happening instead of showing failed requests. It hides once the API answers.
+// Pings the API on page load. If it isn't reachable yet (server starting or
+// restarting), shows a short notice instead of letting requests fail silently,
+// and hides itself as soon as the API answers.
 export default function ServerStatus() {
   const [state, setState] = useState('checking') // checking | waking | online
   const [seconds, setSeconds] = useState(0)
@@ -57,7 +56,7 @@ export default function ServerStatus() {
         background: 'rgb(240,180,60)', flexShrink: 0,
       }} />
       <span>
-        Démarrage du serveur d'analyse (hébergement gratuit, mise en veille après inactivité) — cela peut prendre jusqu'à une minute…
+        Connexion au serveur d'analyse… (s'il vient de démarrer, cela peut prendre une minute)
         <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginLeft: '8px' }}>
           {seconds}s
         </span>

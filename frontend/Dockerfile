@@ -25,7 +25,7 @@ COPY . .
 
 # Variables disponibles au build-time (injectées dans le bundle JS)
 # Pass the public API URL at build time, e.g.
-#   docker build --build-arg NEXT_PUBLIC_API_URL=https://your-scanner.onrender.com .
+#   docker build --build-arg NEXT_PUBLIC_API_URL=https://1-2-3-4.sslip.io .
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \

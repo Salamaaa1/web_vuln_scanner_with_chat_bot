@@ -154,7 +154,7 @@ class NucleiExecutor(Executor):
             cmd += ["-severity", severity]
 
         # Extra flags, e.g. "-c 5 -bs 5 -rl 50" to keep memory/CPU low on small
-        # free-tier hosts (Render free = 512 MB RAM, 0.1 CPU).
+        # servers.
         cmd += os.getenv("NUCLEI_EXTRA_ARGS", "").split()
 
         proc = await asyncio.create_subprocess_exec(

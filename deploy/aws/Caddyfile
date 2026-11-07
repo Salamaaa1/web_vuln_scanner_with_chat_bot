@@ -1,0 +1,6 @@
+# HTTPS front door for the scanner API. Caddy gets and renews the
+# certificate automatically for $API_DOMAIN (e.g. 3-120-45-67.sslip.io).
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy scanner:8000
+}

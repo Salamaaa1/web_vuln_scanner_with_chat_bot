@@ -1,0 +1,38 @@
+# Scanner API on an AWS EC2 server, behind Caddy (automatic HTTPS).
+# Started by setup.sh — see DEPLOY.md. Settings come from ./.env (created by setup.sh).
+services:
+  scanner:
+    build:
+      context: ../../scanner
+      dockerfile: dockerfile
+    image: auto-pentest-scanner:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_NAME: scanner
+      NMAP_TOP_PORTS: "1000"
+      NMAP_TIMING: "-T4"
+      # keep nuclei light enough for a small (1 GB) server
+      NUCLEI_SEVERITY: "critical,high,medium"
+      NUCLEI_EXTRA_ARGS: "-c 10 -bs 10 -rl 100"
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?run setup.sh first}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - scanner
+
+volumes:
+  caddy_data:
+  caddy_config:
