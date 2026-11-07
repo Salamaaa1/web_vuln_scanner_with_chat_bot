@@ -5,6 +5,7 @@ services:
     name: auto-pentest-scanner
     runtime: docker
     plan: free
+    region: frankfurt   # same region as MongoDB Atlas + Upstash
     rootDir: scanner
     dockerfilePath: ./scanner/dockerfile
     dockerContext: ./scanner
