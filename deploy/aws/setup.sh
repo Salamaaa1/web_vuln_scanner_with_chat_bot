@@ -5,8 +5,9 @@
 #   git clone https://github.com/Salamaaa1/web_vuln_scanner_with_chat_bot.git ~/app
 #   bash ~/app/deploy/aws/setup.sh
 #
-# Safe to run again: it updates the code and restarts the API, keeping your
-# settings. See DEPLOY.md for the full walkthrough.
+# Run it once. To update later, use update.sh (never asks for your keys).
+# Running setup.sh again is also safe: it keeps your saved settings.
+# See DEPLOY.md for the full walkthrough.
 # =============================================================================
 set -euo pipefail
 

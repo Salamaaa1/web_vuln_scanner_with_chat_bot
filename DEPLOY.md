@@ -90,9 +90,10 @@ Open your Vercel link and scan a legal test target:
 ## Updating after you push new code
 
 ```bash
-bash ~/app/deploy/aws/setup.sh
+bash ~/app/deploy/aws/update.sh
 ```
-It pulls the latest code, rebuilds and restarts the API, and keeps your settings.
+It pulls the latest code, rebuilds and restarts the API. It never asks for your keys:
+they stay saved in `~/app/deploy/aws/.env` on the server (git never touches that file).
 (Frontend changes deploy on Vercel automatically on every push.)
 
 ## Costs and the 6-month limit
@@ -110,7 +111,7 @@ It pulls the latest code, rebuilds and restarts the API, and keeps your settings
 |---|---|
 | Setup ends with "The API isn't answering yet" | `cd ~/app/deploy/aws && sudo docker compose logs --tail 50` |
 | Logs: Mongo `ServerSelectionTimeoutError` | Atlas **Network Access** must include `0.0.0.0/0`; check user/password in `MONGODB_URL`. |
-| Wrong value pasted during setup | `rm ~/app/deploy/aws/.env` then run `setup.sh` again. |
+| Wrong value pasted during setup | `rm ~/app/deploy/aws/.env` then run `setup.sh` again (it asks for the keys only when that file is missing). |
 | Browser console: CORS error | Run `set-frontend.sh` with the exact Vercel URL (https, no trailing `/`). |
 | Dashboard calls `localhost:8000` | `NEXT_PUBLIC_API_URL` missing on Vercel → add it and **Redeploy**. |
 | HTTPS address doesn't load | Security group must allow ports 80 and 443 (step 2). |
