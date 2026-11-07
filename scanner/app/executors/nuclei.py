@@ -222,7 +222,9 @@ class NucleiExecutor(Executor):
 
     @staticmethod
     def _base_cmd(nuclei_path: str, list_file: str) -> list:
-        cmd = [nuclei_path, "-l", list_file, "-jsonl", "-silent",
+        # -duc: no update check at scan time (templates are installed in the
+        # image at build time; checking/updating mid-scan only slows it down).
+        cmd = [nuclei_path, "-l", list_file, "-jsonl", "-silent", "-duc",
                "-timeout", "10", "-retries", "1", "-no-color"]
         severity = os.getenv("NUCLEI_SEVERITY", "").strip()
         if severity:
