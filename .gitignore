@@ -84,5 +84,3 @@ frontend.log
 # Keep the template even though .env.* is ignored above
 !.env.example
 
-# --- Claude Code / agent tooling ---
-.claude/

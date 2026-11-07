@@ -98,6 +98,8 @@ class NmapExecutor(Executor):
         #   NMAP_TOP_PORTS  -> N most common ports (default 1000)
         #   NMAP_TIMING     -> timing template (default -T4)
         #   NMAP_TIMEOUT    -> hard timeout in seconds (default 600)
+        #   NMAP_EXTRA_ARGS -> extra flags, e.g. "--unprivileged" on cloud hosts
+        #                      (e.g. Render) that don't allow raw sockets
         ports_spec = os.getenv("NMAP_PORTS", "").strip()
         if ports_spec:
             port_args = ["-p", ports_spec]
@@ -109,7 +111,8 @@ class NmapExecutor(Executor):
         # -sV (versions), -sC (default scripts), -Pn (skip host-discovery ping —
         # many hosts block ICMP, without this nmap would mark them down and scan
         # nothing), -oX - (XML to stdout).
-        cmd = [nmap_path, "-sV", "-sC", "-Pn", timing, *port_args, "-oX", "-", target]
+        extra_args = os.getenv("NMAP_EXTRA_ARGS", "").split()
+        cmd = [nmap_path, "-sV", "-sC", "-Pn", timing, *extra_args, *port_args, "-oX", "-", target]
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,

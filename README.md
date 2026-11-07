@@ -4,6 +4,10 @@ Automated reconnaissance and vulnerability scanning (nmap, subfinder, httpx,
 katana, feroxbuster, nuclei) with a web dashboard, live scan progress, Redis
 caching, scan history, and downloadable PDF reports.
 
+## Deploy online
+
+Free hosting (Vercel + Render + MongoDB Atlas + Upstash): follow **[DEPLOY_FREE.md](DEPLOY_FREE.md)**.
+
 ## Run it on any PC (no source code needed)
 
 You only need **Docker** installed and running, plus the launcher script for

@@ -80,7 +80,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Note: wordlists/common.txt est inclus ici ; feroxbuster.py le resout via un chemin relatif au projet.
 COPY . .
 
-# The API listens on 8000 (matches the frontend's NEXT_PUBLIC_API_URL default).
+# The API listens on $PORT when the host provides one (e.g. Render),
+# otherwise on 8000 (matches the frontend's NEXT_PUBLIC_API_URL default).
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]

@@ -1,3 +1,4 @@
+import os
 import sys
 import asyncio
 
@@ -26,9 +27,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pentest Scanner Orchestrator", lifespan=lifespan)
 
+# CORS: comma-separated list of allowed frontend origins, e.g.
+#   ALLOWED_ORIGINS=https://your-app.vercel.app
+# Defaults to "*" (any origin) for local development.
+_origins = [o.strip().rstrip("/") for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins or ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

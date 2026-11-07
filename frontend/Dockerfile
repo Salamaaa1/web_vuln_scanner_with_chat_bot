@@ -24,8 +24,12 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Variables disponibles au build-time (injectées dans le bundle JS)
+# Pass the public API URL at build time, e.g.
+#   docker build --build-arg NEXT_PUBLIC_API_URL=https://your-scanner.onrender.com .
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -60,6 +64,6 @@ ENV HOSTNAME="0.0.0.0"
 # Use node + 127.0.0.1 (not wget/localhost): "localhost" can resolve to IPv6
 # ::1 first, but the Next server binds IPv4 0.0.0.0, so wget would fail.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD node -e "require('http').get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode<400?0:1)).on('error',()=>process.exit(1))"
+    CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||3000)+'/',r=>process.exit(r.statusCode<400?0:1)).on('error',()=>process.exit(1))"
 
 CMD ["node", "server.js"]

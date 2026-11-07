@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Header       from '@/components/dashboard/Header'
+import ServerStatus from '@/components/dashboard/ServerStatus'
 import ScanForm     from '@/components/dashboard/ScanForm'
 import MetricsBar   from '@/components/dashboard/MetricsBar'
 import LiveConsole  from '@/components/dashboard/LiveConsole'
@@ -111,6 +112,8 @@ export default function Home() {
       gap: '20px',
     }}>
       <Header isRunning={isRunning} />
+
+      <ServerStatus />
 
       <Tabs active={tab} onChange={setTab} />
 

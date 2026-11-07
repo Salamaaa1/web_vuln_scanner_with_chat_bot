@@ -1,0 +1,37 @@
+# Render Blueprint: deploys the scanner API on Render's FREE plan.
+# Render dashboard → New → Blueprint → pick this repo. See DEPLOY_FREE.md.
+services:
+  - type: web
+    name: auto-pentest-scanner
+    runtime: docker
+    plan: free
+    rootDir: scanner
+    dockerfilePath: ./scanner/dockerfile
+    dockerContext: ./scanner
+    healthCheckPath: /
+    envVars:
+      # Secrets: Render asks for these when you create the Blueprint.
+      - key: MONGODB_URL          # MongoDB Atlas connection string (mongodb+srv://...)
+        sync: false
+      - key: REDIS_URL            # Upstash Redis URL (rediss://...)
+        sync: false
+      - key: NVIDIA_API_KEY       # AI assistant key
+        sync: false
+      - key: ALLOWED_ORIGINS      # your Vercel URL, e.g. https://auto-pentest.vercel.app
+        sync: false
+      # Plain settings
+      - key: DATABASE_NAME
+        value: scanner
+      - key: NVIDIA_MODEL
+        value: deepseek-ai/deepseek-v4-flash
+      # Free plan = 512 MB RAM / 0.1 CPU: keep the tools light.
+      - key: NMAP_TOP_PORTS
+        value: "100"
+      - key: NMAP_TIMING
+        value: "-T4"
+      - key: NMAP_EXTRA_ARGS
+        value: "--unprivileged"
+      - key: NUCLEI_SEVERITY
+        value: "critical,high,medium"
+      - key: NUCLEI_EXTRA_ARGS
+        value: "-c 5 -bs 5 -rl 50"

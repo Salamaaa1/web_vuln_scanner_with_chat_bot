@@ -52,7 +52,7 @@ services:
     image: salamaaa11/auto-pentest-scanner:latest
     build:
       context: ./scanner
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: pentest-scanner
     restart: unless-stopped
     ports:
