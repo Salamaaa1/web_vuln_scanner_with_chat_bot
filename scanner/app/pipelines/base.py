@@ -35,9 +35,14 @@ def _summarize_worker(name: str, result: dict) -> str:
         if name == "nuclei":
             res = result.get("nuclei_result", {}) or {}
             n = len(res.get("vulnerabilities", []) or [])
+            scope = ""
+            if "scanned_targets" in res:
+                scope = f" ({res['scanned_targets']} cible(s), {res.get('dast_targets', 0)} URL(s) à paramètres fuzzée(s))"
+            if res.get("dast_error"):
+                scope += " — fuzzing DAST indisponible"
             if res.get("timed_out"):
-                return f"nuclei arrêté (limite de temps atteinte) — {n} vulnérabilité(s) trouvée(s)"
-            return f"nuclei terminé — {n} vulnérabilité(s)"
+                return f"nuclei arrêté (limite de temps atteinte) — {n} vulnérabilité(s) trouvée(s){scope}"
+            return f"nuclei terminé — {n} vulnérabilité(s){scope}"
     except Exception:
         pass
     return f"{name} terminé"

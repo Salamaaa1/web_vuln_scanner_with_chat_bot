@@ -30,8 +30,10 @@ class HttpxExecutor(Executor):
         cmd_args = [httpx_path] + common_flags
 
         # 1. Logique de sélection : Nmap (liste) vs URL unique
-        nmap_result = data.get("nmap_result", {})
-        if nmap_result and nmap_result.get("open_ports"):
+        # Machine (IP) targets: probe the web ports nmap found. For URL targets
+        # nmap runs in parallel, so its result must not change httpx's input.
+        nmap_result = data.get("nmap_result", {}) or {}
+        if data.get("ip") and nmap_result.get("open_ports"):
             ip = data.get("ip")
             urls = [f"http://{ip}:{p['port']}" for p in nmap_result.get("open_ports", []) if p['port'] in [80, 443, 8080, 8443]]
             
@@ -67,13 +69,18 @@ class HttpxExecutor(Executor):
             raise ToolInternalError(stderr.decode(), tool_name="httpx", message="Tool returned non-zero exit status.")
 
         # 4. Parsing (Gestion du multi-lignes pour le mode liste)
-        results = []
+        results, seen = [], set()
         for line in stdout.decode().splitlines():
             if line.strip():
                 try:
-                    results.append(json.loads(line))
+                    item = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                key = str(item.get("url", "")).rstrip("/").lower()
+                if key in seen:
+                    continue  # httpx can print the same URL twice
+                seen.add(key)
+                results.append(item)
 
         data["httpx_result"] = results
         return data

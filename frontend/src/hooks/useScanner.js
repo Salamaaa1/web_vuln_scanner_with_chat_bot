@@ -7,6 +7,8 @@ export function useScanner() {
   const [scan,     setScan]     = useState(null)
   const [logs,     setLogs]     = useState([])
   const [findings, setFindings] = useState([])
+  // Hosts / endpoints / resources / ports / subdomains found by the scan
+  const [inventory, setInventory] = useState(null)
   const [metrics,  setMetrics]  = useState({
     subdomains: 0, ports: 0, findings: 0, endpoints: 0, percent: 0, step: '', total: 0,
   })
@@ -26,6 +28,7 @@ export function useScanner() {
   const startScan = useCallback(async (target) => {
     setLogs([])
     setFindings([])
+    setInventory(null)
     setPendingCache(null)
     setMetrics({ subdomains: 0, ports: 0, findings: 0, endpoints: 0, percent: 0, step: 'Démarrage…', total: 0 })
     setIsRunning(true)
@@ -142,6 +145,7 @@ export function useScanner() {
           liveFindings = prog.findings.length
           setFindings(prog.findings)
         }
+        if (prog.inventory) setInventory(prog.inventory)
         if (prog.metrics) {
           const lm = prog.metrics
           setMetrics(prev => ({
@@ -164,6 +168,22 @@ export function useScanner() {
       const resultsRes = await fetch(`${API}/api/v1/scans/results/${targetId}`)
       const resultsData = await resultsRes.json()
       setFindings(resultsData.vulnerabilities ?? [])
+
+      // Full inventory from the report (same data as the PDF), so the lists
+      // are complete even when the result came from the cache.
+      try {
+        const repRes = await fetch(`${API}/api/v1/scans/report/${targetId}`)
+        if (repRes.ok) {
+          const rep = await repRes.json()
+          setInventory({
+            hosts:      rep.live_endpoints ?? [],
+            endpoints:  rep.crawled_endpoints ?? [],
+            resources:  rep.discovered_resources ?? [],
+            ports:      rep.open_ports ?? [],
+            subdomains: rep.subdomains ?? [],
+          })
+        }
+      } catch { /* the live inventory stays on screen */ }
 
       const m = resultsData.metrics ?? {}
       setMetrics(prev => ({
@@ -213,7 +233,7 @@ export function useScanner() {
   }, [])
 
   return {
-    scan, logs, findings, metrics, isRunning, startScan, stopScan,
+    scan, logs, findings, inventory, metrics, isRunning, startScan, stopScan,
     pendingCache, resolveCache, dismissCache,
   }
 }

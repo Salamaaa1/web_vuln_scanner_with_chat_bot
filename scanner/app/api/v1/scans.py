@@ -10,7 +10,7 @@ from app.pipelines.dns_pipeline import DnsPipeline
 from app.pipelines.machine_pipeline import MachinePipeline
 from app.core import cache
 from app.core import progress as progress_store
-from app.core.metrics import compute_metrics as _compute_metrics
+from app.core.metrics import build_inventory, compute_metrics as _compute_metrics
 import asyncio
 import shutil
 import time
@@ -218,87 +218,86 @@ async def get_logs(limit: int = 100):
     }
 
 
-def _build_report(target, scan_result) -> dict:
-    """Assemble a detailed, human-readable report from a stored scan result."""
+def _build_report(target, scan_result, ai_bilans=None) -> dict:
+    """Assemble a detailed, human-readable report from a stored scan result.
+
+    Uses the same inventory as the dashboard counters, so the numbers in the
+    report always match what the dashboard showed.
+    """
+    import datetime as _dt
     raw = scan_result.rawJson if scan_result else {}
-    metrics = _compute_metrics(raw)
+    inv = build_inventory(raw)
+    ai_bilans = ai_bilans or {}
 
-    # Open ports (machine pipeline)
-    nmap = raw.get("nmap_result", {}) if isinstance(raw, dict) else {}
-    open_ports = [
-        {
-            "port": p.get("port"),
-            "protocol": p.get("protocol"),
-            "service": p.get("service"),
-            "product": p.get("product"),
-            "version": p.get("version"),
-        }
-        for p in (nmap.get("open_ports", []) or [])
-    ]
-
-    # Subdomains (DNS pipeline)
-    subfinder = raw.get("subfinder_result", {}) if isinstance(raw, dict) else {}
-    subdomains = subfinder.get("subfinder_subdomains", []) or []
-
-    # Live HTTP endpoints (httpx)
-    httpx_raw = raw.get("httpx_result", []) if isinstance(raw, dict) else []
-    live_endpoints = []
-    if isinstance(httpx_raw, list):
-        for h in httpx_raw:
-            if isinstance(h, dict):
-                live_endpoints.append({
-                    "url": h.get("url"),
-                    "status_code": h.get("status_code"),
-                    "title": h.get("title"),
-                    "webserver": h.get("webserver"),
-                    "tech": h.get("tech", []),
-                })
-
-    # Crawled endpoints (katana) + brute-forced resources (feroxbuster)
-    katana = raw.get("katana_result", {}) if isinstance(raw, dict) else {}
-    crawled = katana.get("katana_endpoints", []) or []
-    ferox = raw.get("feroxbuster_result", {}) if isinstance(raw, dict) else {}
-    resources = ferox.get("feroxbuster_resources", []) or []
-
-    # Vulnerabilities grouped by severity
     vulns = []
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     if scan_result:
         for v in scan_result.vulnerabilities:
             sev = (v.severity or "info").lower()
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
+            rd = v.raw_data or {}
+            info = rd.get("info", {}) or {}
+            refs = info.get("reference") or []
+            if isinstance(refs, str):
+                refs = [refs]
+            bilan = ai_bilans.get(v.title) or {}
             vulns.append({
                 "title": v.title,
                 "description": v.description,
-                "severity": v.severity,
+                "severity": sev,
+                "target": rd.get("matched-at") or rd.get("host"),
+                "template_id": rd.get("template-id"),
+                "type": rd.get("type"),
+                "remediation": info.get("remediation") or "",
+                "references": [r for r in refs if r][:5],
+                "ai_analysis": bilan.get("analysis") or "",
+                "ai_remediation": bilan.get("remediation") or "",
             })
+
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    vulns.sort(key=lambda x: order.get(x["severity"], 5))
+
+    nuclei_res = raw.get("nuclei_result", {}) if isinstance(raw, dict) else {}
+    tools_run = [name for name, key in (
+        ("nmap", "nmap_result"), ("subfinder", "subfinder_result"), ("httpx", "httpx_result"),
+        ("katana", "katana_result"), ("feroxbuster", "feroxbuster_result"), ("nuclei", "nuclei_result"),
+    ) if isinstance(raw, dict) and raw.get(key)]
 
     return {
         "report_type": "detailed_scan_report",
-        "generated_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+        "generated_at": _dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "scanned_at": scan_result.created_at.replace(microsecond=0).isoformat() if scan_result else None,
         "target": {
             "value": target.value,
             "type": target.targetType,
             "id": str(target.id),
         },
         "summary": {
-            **metrics,
+            "subdomains": len(inv["subdomains"]),
+            "endpoints": inv["unique_urls"],
+            "ports": len(inv["ports"]),
             "vulnerabilities": len(vulns),
             "severity_breakdown": severity_counts,
         },
-        "open_ports": open_ports,
-        "os_info": nmap.get("os_info", {}) if isinstance(nmap, dict) else {},
-        "subdomains": subdomains,
-        "live_endpoints": live_endpoints,
-        "crawled_endpoints": crawled,
-        "discovered_resources": resources,
+        "scope": {
+            "tools": tools_run,
+            "port_scan_done": inv["port_scan_done"],
+            "nuclei_targets": nuclei_res.get("scanned_targets") if isinstance(nuclei_res, dict) else None,
+            "nuclei_dast_targets": nuclei_res.get("dast_targets") if isinstance(nuclei_res, dict) else None,
+            "nuclei_timed_out": bool(nuclei_res.get("timed_out")) if isinstance(nuclei_res, dict) else False,
+        },
+        "open_ports": inv["ports"],
+        "os_info": inv["os_info"],
+        "subdomains": inv["subdomains"],
+        "live_endpoints": inv["hosts"],
+        "crawled_endpoints": inv["endpoints"],
+        "discovered_resources": inv["resources"],
         "vulnerabilities": vulns,
     }
 
 
-@router.get("/report/{target_id}")
-async def get_report(target_id: str):
-    """Return a detailed downloadable report for the most recent scan of a target."""
+async def _load_report(target_id: str):
+    """Target + latest scan + saved AI analyses → report dict (or 404)."""
     try:
         target = await Target.get(PydanticObjectId(target_id))
     except Exception:
@@ -309,7 +308,21 @@ async def get_report(target_id: str):
     results = await ScanResult.find(ScanResult.target_id == target_id).sort(-ScanResult.created_at).to_list()
     scan_result = results[0] if results else None
 
-    report = _build_report(target, scan_result)
+    ai_bilans = {}
+    try:
+        from app.models.ai_conversation import AiConversation
+        convos = await AiConversation.find(AiConversation.target_id == target_id).to_list()
+        ai_bilans = {c.vuln_title: (c.bilan or {}) for c in convos}
+    except Exception:
+        pass  # the report must never fail because of the AI history
+
+    return target, _build_report(target, scan_result, ai_bilans)
+
+
+@router.get("/report/{target_id}")
+async def get_report(target_id: str):
+    """Return a detailed downloadable report for the most recent scan of a target."""
+    target, report = await _load_report(target_id)
 
     safe_name = target.value.replace("://", "_").replace("/", "_").replace(":", "_")
     headers = {
@@ -321,17 +334,7 @@ async def get_report(target_id: str):
 @router.get("/report/{target_id}/pdf")
 async def get_report_pdf(target_id: str):
     """Return the detailed report as a formatted PDF document."""
-    try:
-        target = await Target.get(PydanticObjectId(target_id))
-    except Exception:
-        target = None
-    if not target:
-        raise HTTPException(status_code=404, detail="Target not found")
-
-    results = await ScanResult.find(ScanResult.target_id == target_id).sort(-ScanResult.created_at).to_list()
-    scan_result = results[0] if results else None
-
-    report = _build_report(target, scan_result)
+    target, report = await _load_report(target_id)
 
     from app.core.report_pdf import build_report_pdf
     pdf_bytes = build_report_pdf(report)

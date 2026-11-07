@@ -10,6 +10,7 @@ import VulnTable    from '@/components/dashboard/VulnTable'
 import ExportBar    from '@/components/dashboard/ExportBar'
 import LogsView     from '@/components/dashboard/LogsView'
 import AiAssistant  from '@/components/dashboard/AiAssistant'
+import InventoryPanel from '@/components/dashboard/InventoryPanel'
 import { useScanner } from '@/hooks/useScanner'
 
 function Tabs({ active, onChange }) {
@@ -88,6 +89,7 @@ export default function Home() {
     scan,
     logs,
     findings,
+    inventory,
     metrics,
     isRunning,
     startScan,
@@ -143,6 +145,8 @@ export default function Home() {
               total={findings.length}
             />
           </div>
+
+          <InventoryPanel inventory={inventory} isRunning={isRunning} />
 
           <ExportBar scanId={scan?.id} isRunning={isRunning} findings={findings} />
         </>

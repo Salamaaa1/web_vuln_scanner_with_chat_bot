@@ -1,6 +1,7 @@
 import asyncio
 import os
 import shutil
+from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
 from app.Exception.tools_exception import ToolInternalError, ToolNotFoundError
 from app.executors.base import Executor
@@ -84,8 +85,22 @@ class NmapExecutor(Executor):
 
         return {"host_status": host_status, "ports": ports, "os_info": os_info}
 
+    @staticmethod
+    def _target(data: dict) -> str:
+        """IP / domain as-is; for a URL, scan its host (nmap can't take a URL)."""
+        if data.get("ip"):
+            return str(data["ip"]).strip()
+        if data.get("domain"):
+            return str(data["domain"]).strip()
+        url = str(data.get("url") or "").strip()
+        if url:
+            host = urlsplit(url if "://" in url else "http://" + url).hostname
+            if host:
+                return host
+        return "unknown"
+
     async def excutor(self, data: dict) -> dict:
-        target = data.get("ip", data.get("domain", data.get("url", "unknown")))
+        target = self._target(data)
 
         nmap_path = shutil.which("nmap")
         if nmap_path is None:

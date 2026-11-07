@@ -70,6 +70,8 @@ services:
       # Nmap tuning (top-1000 ports by default; set NMAP_PORTS=1-65535 for a full scan)
       - NMAP_TOP_PORTS=1000
       - NMAP_TIMING=-T4
+      # Vulnerability scan: skip purely informational findings (tech detection, banners)
+      - NUCLEI_SEVERITY=critical,high,medium,low
       # AI remediation advisor. Key is read from the .env file (auto-loaded by
       # compose) or the host environment — never baked into the image.
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}

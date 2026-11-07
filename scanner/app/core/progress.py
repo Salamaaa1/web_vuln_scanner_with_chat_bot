@@ -40,6 +40,8 @@ def create(scan_id: str, target_id: Optional[str] = None) -> None:
         # Live results, filled while the scan runs (shown by the dashboard).
         "findings": [],
         "metrics": {"subdomains": 0, "endpoints": 0, "ports": 0, "findings": 0},
+        # Live lists (hosts, endpoints, resources, ports, subdomains).
+        "inventory": None,
     }
 
 
@@ -67,10 +69,13 @@ def report_partial(results: dict) -> None:
     entry = _current_entry()
     if entry is None:
         return
-    from app.core.metrics import compute_metrics
-    for key, value in compute_metrics(results).items():
+    from app.core.metrics import build_inventory, limit_inventory
+    inv = build_inventory(results)
+    counts = {"subdomains": len(inv["subdomains"]), "endpoints": inv["unique_urls"], "ports": len(inv["ports"])}
+    for key, value in counts.items():
         # Counters only ever go up while a scan runs.
         entry["metrics"][key] = max(entry["metrics"].get(key, 0), value)
+    entry["inventory"] = limit_inventory(inv)
 
 
 def push(scan_id: str, message: str, level: str = "info") -> None:

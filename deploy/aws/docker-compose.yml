@@ -17,7 +17,7 @@ services:
       # are the safe values for a 1 GB server.
       # An empty NUCLEI_TAGS means "full template set".
       NUCLEI_TAGS: ${NUCLEI_TAGS-cve,misconfig,exposure,xss,sqli,lfi,rce,ssrf,redirect,takeover,default-login}
-      NUCLEI_SEVERITY: ${NUCLEI_SEVERITY:-critical,high,medium}
+      NUCLEI_SEVERITY: ${NUCLEI_SEVERITY:-critical,high,medium,low}
       NUCLEI_EXTRA_ARGS: ${NUCLEI_EXTRA_ARGS:--c 5 -bs 5 -rl 50}
       NUCLEI_TIMEOUT: ${NUCLEI_TIMEOUT:-600}
       # Soft memory limit for the Go tools (nuclei, katana, httpx, subfinder).

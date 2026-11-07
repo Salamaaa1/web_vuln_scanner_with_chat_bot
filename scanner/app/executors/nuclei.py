@@ -4,6 +4,7 @@ import os
 import shutil
 import signal
 import tempfile
+from urllib.parse import parse_qsl, urlsplit
 from datetime import datetime, timezone
 from app.Exception.tools_exception import NoDataFoundError, ToolInternalError, ToolNotFoundError
 from app.executors.base import Executor
@@ -50,11 +51,25 @@ class NucleiExecutor(Executor):
         raw_results = []
         raw_lines = stdout.decode().strip().split("\n")
 
+        seen = set()
         for line in raw_lines:
             if not line.strip():
                 continue
             try:
                 val = json.loads(line.strip())
+                if not isinstance(val, dict):
+                    continue
+                # Same template on the same URL = same finding (e.g. found by
+                # both the standard and the DAST pass).
+                key = (val.get("template-id"), val.get("matched-at") or val.get("host"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                # Raw HTTP request/response can be huge; keep a readable excerpt
+                # so stored results stay small (MongoDB 16 MB document limit).
+                for field in ("request", "response"):
+                    if isinstance(val.get(field), str) and len(val[field]) > 2000:
+                        val[field] = val[field][:2000] + "\n...[truncated]"
                 raw_results.append(val)
 
                 info = val.get("info", {})
@@ -88,96 +103,80 @@ class NucleiExecutor(Executor):
 
 
 
+    # ------------------------------------------------------------------
+    # Targets
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _origin(url: str):
+        """scheme://host[:port] of a URL, or None."""
+        try:
+            p = urlsplit(url)
+        except Exception:
+            return None
+        if p.scheme in ("http", "https") and p.netloc:
+            return f"{p.scheme}://{p.netloc}"
+        return None
+
     def extract_urls(self, data: dict) -> list:
-        urls_to_scan = set()
-        
-        # 1. Ajouter l'URL principale
+        """Targets for the standard templates: the scanned URL plus every live
+        host. Nuclei's standard templates probe their own paths (/.git/config,
+        /admin, known CVE paths...) from the base URL, so running them against
+        every crawled page only multiplies requests without finding more."""
+        targets = []
+
+        def add(u):
+            if u and u not in targets:
+                targets.append(u)
+
         if data.get("url"):
-            urls_to_scan.add(data["url"])
-            
-        # 2. Extraire les URLs trouvées par Katana
-        
-        katana_result = data.get("katana_result", {})
-        katana_endpoints = katana_result.get("katana_endpoints", [])
+            add(data["url"])
+            add(self._origin(data["url"]))
+        for res in data.get("httpx_result", []) if isinstance(data.get("httpx_result"), list) else []:
+            if isinstance(res, dict) and res.get("url"):
+                add(res["url"])
+        if not targets and data.get("ip"):
+            add(data["ip"])
+        return targets
 
-       
-          
-        if isinstance(katana_endpoints, list):
-            for endpoint in katana_endpoints:
-                # endpoint est un dict (ex: {"url": "...", "method": "..."})
-                u = endpoint.get("url")
-                if u:
-                    urls_to_scan.add(u)
-                    
-        httpx_res = data.get("httpx_result", [])
-        if isinstance(httpx_res, list):
-            for res in httpx_res:
-                u = res.get("url")
-                if u:
-                    urls_to_scan.add(u)
-        
-                    
-        # 3. Extraire les URLs trouvées par Feroxbuster
-        feroxbuster_result = data.get("feroxbuster_result", {})
-        feroxbuster_resources = feroxbuster_result.get("feroxbuster_resources", [])
-        
-        if isinstance(feroxbuster_resources, list):
-            for resource in feroxbuster_resources:
-                # resource est un dict (ex: {"url": "...", "status_code": 200})
-                u = resource.get("url")
-                if u:
-                    urls_to_scan.add(u)
-                    
-        return list(urls_to_scan)
-    
+    def extract_dast_urls(self, data: dict) -> list:
+        """Pages with query parameters, for DAST fuzzing (XSS, SQLi, LFI,
+        open redirect...). One URL per (path + parameter names), capped."""
+        max_urls = int(os.getenv("NUCLEI_DAST_MAX_URLS", "150"))
+        urls, seen = [], set()
 
-    async def excutor(self, data: dict) -> dict:
+        candidates = []
+        kat = data.get("katana_result", {})
+        if isinstance(kat, dict):
+            candidates += [e.get("url") for e in kat.get("katana_endpoints", []) or [] if isinstance(e, dict)]
+        fx = data.get("feroxbuster_result", {})
+        if isinstance(fx, dict):
+            candidates += [r.get("url") for r in fx.get("feroxbuster_resources", []) or [] if isinstance(r, dict)]
+        if data.get("url"):
+            candidates.append(data["url"])
 
-      
-        # Check if we should use mock or real execution
-        nuclei_path = shutil.which("nuclei")
+        for u in candidates:
+            if not u or "?" not in u:
+                continue
+            p = urlsplit(u)
+            params = tuple(sorted(k for k, _ in parse_qsl(p.query, keep_blank_values=True)))
+            if not params:
+                continue
+            key = (p.netloc.lower(), p.path, params)
+            if key in seen:
+                continue
+            seen.add(key)
+            urls.append(u)
+            if len(urls) >= max_urls:
+                break
+        return urls
 
-
-        if nuclei_path is None:
-            raise ToolNotFoundError("nuclei", "nuclei tool not found")
-
-
-        # Consolidate URLs
-        url_list = self.extract_urls(data)
-        # Real Execution
-        if not url_list:
-            # Nothing to scan
-            raise NoDataFoundError(tool_name="nuclei")
-
-        temp_url_file = None
-
-        
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".txt") as temp_file:
-            for u in url_list:
-                temp_file.write(f"{u}\n")
-            temp_url_file = temp_file.name
-
-        # Build the nuclei command.
-        # By default we run the FULL default template set — that is what real
-        # vulnerability detection needs. The previous narrow "-tags
-        # cves,dast,misconfiguration" filter missed almost everything.
-        # Both the tag filter and the severity filter are overridable via env
-        # vars so an operator can trade coverage for speed.
-        cmd = [nuclei_path, "-l", temp_url_file, "-jsonl", "-silent",
-               "-timeout", "10", "-retries", "1", "-no-color"]
-
-        tags = os.getenv("NUCLEI_TAGS", "").strip()
-        if tags:
-            cmd += ["-tags", tags]
-
-        severity = os.getenv("NUCLEI_SEVERITY", "").strip()
-        if severity:
-            cmd += ["-severity", severity]
-
-        # Extra flags, e.g. "-c 5 -bs 5 -rl 50" to keep memory/CPU low on small
-        # servers.
-        cmd += os.getenv("NUCLEI_EXTRA_ARGS", "").split()
-
+    # ------------------------------------------------------------------
+    # Running nuclei
+    # ------------------------------------------------------------------
+    async def _run(self, cmd: list, timeout: float):
+        """Run one nuclei command, reporting each finding live as it is
+        printed. Stops nuclei after `timeout` seconds and keeps what it found.
+        Returns (stdout_bytes, stderr_text, returncode, timed_out)."""
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -188,12 +187,6 @@ class NucleiExecutor(Executor):
             # Own process group, so a timeout can stop nuclei and anything it spawned.
             start_new_session=(os.name != "nt"),
         )
-
-        # Read findings as they are printed, under a hard time limit
-        # (NUCLEI_TIMEOUT seconds, default 600). If the limit is hit, nuclei is
-        # stopped and the findings collected so far are kept, so a slow target
-        # or a small server never leaves the scan hanging forever.
-        timeout = float(os.getenv("NUCLEI_TIMEOUT", "600"))
         out_lines = []
 
         async def _collect_stdout():
@@ -223,30 +216,80 @@ class NucleiExecutor(Executor):
         except asyncio.TimeoutError:
             stderr_task.cancel()
             stderr = b""
-        stdout = b"".join(out_lines)
+        stderr_text = stderr.decode(errors="replace")
+        print("nuclei rc", proc.returncode, "timed_out", timed_out, "stderr:", stderr_text[:300])
+        return b"".join(out_lines), stderr_text, proc.returncode, timed_out
 
-        print("nuclei rc", proc.returncode, "timed_out", timed_out, "stderr:", stderr.decode(errors="replace")[:300])
+    @staticmethod
+    def _base_cmd(nuclei_path: str, list_file: str) -> list:
+        cmd = [nuclei_path, "-l", list_file, "-jsonl", "-silent",
+               "-timeout", "10", "-retries", "1", "-no-color"]
+        severity = os.getenv("NUCLEI_SEVERITY", "").strip()
+        if severity:
+            cmd += ["-severity", severity]
+        # Extra flags, e.g. "-c 5 -bs 5 -rl 50" to keep memory/CPU low on small servers.
+        cmd += os.getenv("NUCLEI_EXTRA_ARGS", "").split()
+        return cmd
 
-        # Nuclei can exit non-zero for benign reasons (e.g. a target went
-        # unresponsive) while still producing valid findings on stdout. Only
-        # treat it as a hard failure if it produced no output at all.
-        if proc.returncode != 0 and not stdout.strip() and not timed_out:
-            raise ToolInternalError(stderr.decode(errors="replace"), tool_name="nuclei", message="Tool returned non-zero exit status.")
+    @staticmethod
+    def _write_list(urls: list) -> str:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
+            for u in urls:
+                f.write(f"{u}\n")
+            return f.name
 
-        result  =  self.parse(stdout , url_list)
-        result["timed_out"] = timed_out
+    async def excutor(self, data: dict) -> dict:
+        nuclei_path = shutil.which("nuclei")
+        if nuclei_path is None:
+            raise ToolNotFoundError("nuclei", "nuclei tool not found")
 
+        url_list = self.extract_urls(data)
+        if not url_list:
+            raise NoDataFoundError(tool_name="nuclei")
+        dast_urls = self.extract_dast_urls(data) if os.getenv("NUCLEI_DAST", "1") != "0" else []
+
+        temp_files = []
+        try:
+            # 1. Standard templates (CVEs, misconfigurations, exposures...) on
+            #    the target and its live hosts.
+            base_file = self._write_list(url_list)
+            temp_files.append(base_file)
+            cmd = self._base_cmd(nuclei_path, base_file)
+            tags = os.getenv("NUCLEI_TAGS", "").strip()
+            if tags:
+                cmd += ["-tags", tags]
+            out, err, rc, timed_out = await self._run(cmd, float(os.getenv("NUCLEI_TIMEOUT", "600")))
+
+            # Nuclei can exit non-zero for benign reasons (e.g. a target went
+            # unresponsive) while still producing findings. Only a run that
+            # failed outright with nothing to fuzz afterwards is an error.
+            if rc != 0 and not out.strip() and not timed_out and not dast_urls:
+                raise ToolInternalError(err, tool_name="nuclei", message="Tool returned non-zero exit status.")
+
+            # 2. DAST fuzzing of pages with parameters (XSS, SQLi, LFI, SSRF,
+            #    open redirect...). A failure here never cancels step 1.
+            dast_out, dast_timed_out, dast_error = b"", False, None
+            if dast_urls:
+                dast_file = self._write_list(dast_urls)
+                temp_files.append(dast_file)
+                dcmd = self._base_cmd(nuclei_path, dast_file) + ["-dast"]
+                dast_out, derr, drc, dast_timed_out = await self._run(
+                    dcmd, float(os.getenv("NUCLEI_DAST_TIMEOUT", "300")))
+                if drc != 0 and not dast_out.strip() and not dast_timed_out:
+                    dast_error = derr.strip()[:300] or f"exit code {drc}"
+        finally:
+            for f in temp_files:
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+
+        result = self.parse(out + b"\n" + dast_out, url_list)
+        result["timed_out"] = timed_out or dast_timed_out
+        result["scanned_targets"] = len(url_list)
+        result["dast_targets"] = len(dast_urls)
+        if dast_error:
+            result["dast_error"] = dast_error
         result["nuclei_status"] = "completed"
         data["nuclei_result"] = result
-
-        if temp_url_file and os.path.exists(temp_url_file):
-            try:
-                os.remove(temp_url_file)
-            except Exception:
-                pass
         return data
-
-        
-            
-            
-        

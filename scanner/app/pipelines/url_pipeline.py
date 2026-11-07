@@ -3,6 +3,7 @@ from app.executors.feroxbuster import FeroxbusterExecutor
 from app.executors.httpx import HttpxExecutor
 from app.executors.katana import KatanaExecutor
 from app.executors.nuclei import NucleiExecutor
+from app.executors.nmap import NmapExecutor
 from app.pipelines.base import AbstractPipeline, Step
 from app.models.target import Target
 from app.models.scan_result import ScanResult
@@ -38,14 +39,17 @@ class UrlPipeline(AbstractPipeline):
         executorData["katana_result"] = {}
         executorData["feroxbuster_result"] = {}
         executorData["nuclei_result"] = {}
+        executorData["nmap_result"] = {}
 
 
 
         htppxWorker  = Worker(HttpxExecutor(),executorData , "httpx")
         feroxbusterWorker = Worker(FeroxbusterExecutor(), executorData, "feroxbuster")
         katanaWorker = Worker(KatanaExecutor(), executorData, "katana")
+        # nmap scans the host behind the URL for open ports / services.
+        nmapWorker = Worker(NmapExecutor(), executorData, "nmap")
         stepOne = Step(
-            workers=[htppxWorker, katanaWorker, feroxbusterWorker]
+            workers=[htppxWorker, katanaWorker, feroxbusterWorker, nmapWorker]
             )
                 
         nucleiWorker = Worker(NucleiExecutor(), executorData, "nuclei")

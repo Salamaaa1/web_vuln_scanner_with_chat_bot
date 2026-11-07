@@ -1,6 +1,7 @@
 from app.executors.base import Worker
 from app.executors.httpx_domaine_name import HttpxDomaineExecutor
 from app.executors.subfinder import SubfinderExecutor
+from app.executors.nmap import NmapExecutor
 from app.pipelines.base import AbstractPipeline, Step
 from app.models.target import Target
 from app.models.scan_result import ScanResult
@@ -25,14 +26,17 @@ class DnsPipeline(AbstractPipeline):
         #!  je doit ajouter ici la verification du presence du donne
         executorData["domain"] = data["domain"]
         executorData["subfinder_result"] = {}
+        executorData["nmap_result"] = {}
       
 
 
 
         subfinderWorker  = Worker(SubfinderExecutor(),executorData , "subfinder")
     
+        # nmap scans the domain itself for open ports / services.
+        nmapWorker = Worker(NmapExecutor(), executorData, "nmap")
         stepOne = Step(
-            workers=[subfinderWorker]
+            workers=[subfinderWorker, nmapWorker]
             )
         
         httpxWorker  = Worker(HttpxDomaineExecutor(), executorData, "httpx")
