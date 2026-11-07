@@ -87,6 +87,8 @@ fi
 sed -i '/^API_DOMAIN=/d' .env
 echo "API_DOMAIN='${API_DOMAIN}'" >> .env
 
+bash "$APP_DIR/deploy/aws/tune.sh"
+
 say "[6/6] Building and starting the API (first time: about 5-10 minutes)"
 sudo docker compose up -d --build
 

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from app.Exception.tools_exception import NoDataFoundError, ToolInternalError, ToolNotFoundError
 from app.executors.base import Executor
 from app.models.scan_result import ScanResult, Vulnerability
+from app.core import progress as progress_store
 
 # Severity mapping — Nuclei → standard labels
 SEVERITY_MAP = {
@@ -20,6 +21,25 @@ SEVERITY_MAP = {
 }
 
 class NucleiExecutor(Executor):
+
+    @staticmethod
+    def _live_finding(line: bytes):
+        """Turn one nuclei JSONL line into the small dict the dashboard shows
+        live (same fields as GET /scans/results). None if it isn't a finding."""
+        try:
+            val = json.loads(line.decode(errors="replace").strip())
+        except Exception:
+            return None
+        if not isinstance(val, dict):
+            return None
+        info = val.get("info", {}) or {}
+        return {
+            "title": info.get("name", val.get("template-id", "Unknown")),
+            "description": info.get("description", ""),
+            "severity": SEVERITY_MAP.get(str(info.get("severity", "info")).lower(), "info"),
+            "tool": "nuclei",
+            "target": val.get("matched-at") or val.get("host"),
+        }
 
    
     def parse(self , stdout: bytes, url_list: list) -> dict:
@@ -179,6 +199,9 @@ class NucleiExecutor(Executor):
         async def _collect_stdout():
             async for line in proc.stdout:
                 out_lines.append(line)
+                live = self._live_finding(line)
+                if live:
+                    progress_store.report_finding(live)
 
         stderr_task = asyncio.create_task(proc.stderr.read())
         timed_out = False

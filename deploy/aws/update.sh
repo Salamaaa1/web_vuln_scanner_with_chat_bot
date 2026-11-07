@@ -23,6 +23,9 @@ main() {
   echo "==> Getting the latest code"
   git -C "$dir/../.." pull --ff-only
 
+  echo "==> Sizing nuclei to this server's RAM"
+  bash "$dir/tune.sh"
+
   echo "==> Rebuilding and restarting the API (your settings are kept)"
   sudo docker compose up -d --build
 

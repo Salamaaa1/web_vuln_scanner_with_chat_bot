@@ -6,8 +6,14 @@ console. State is kept in a module-level dict — reliable for a single worker
 process (the default deployment). For a multi-worker deployment, back this with
 Redis pub/sub instead.
 """
+import contextvars
 import datetime
 from typing import Optional
+
+# Which scan the current asyncio task belongs to. Set once per scan job with
+# bind(); every task the pipeline starts inherits it, so executors can report
+# live results with report_finding()/report_partial() without extra arguments.
+_current_scan: contextvars.ContextVar = contextvars.ContextVar("current_scan_id", default=None)
 
 # scan_id -> {status, events: [...], results_count, target_id, cached}
 _STORE: dict = {}
@@ -31,7 +37,40 @@ def create(scan_id: str, target_id: Optional[str] = None) -> None:
         "target_id": target_id,
         "cached": False,
         "created_at": _now(),
+        # Live results, filled while the scan runs (shown by the dashboard).
+        "findings": [],
+        "metrics": {"subdomains": 0, "endpoints": 0, "ports": 0, "findings": 0},
     }
+
+
+def bind(scan_id: str) -> None:
+    """Attach the current asyncio task (and the tasks it starts) to a scan."""
+    _current_scan.set(scan_id)
+
+
+def _current_entry() -> Optional[dict]:
+    scan_id = _current_scan.get()
+    return _STORE.get(scan_id) if scan_id else None
+
+
+def report_finding(finding: dict) -> None:
+    """Called by an executor as soon as it finds a vulnerability."""
+    entry = _current_entry()
+    if entry is None:
+        return
+    entry["findings"].append(finding)
+    entry["metrics"]["findings"] = len(entry["findings"])
+
+
+def report_partial(results: dict) -> None:
+    """Called when a tool finishes, with the pipeline results so far."""
+    entry = _current_entry()
+    if entry is None:
+        return
+    from app.core.metrics import compute_metrics
+    for key, value in compute_metrics(results).items():
+        # Counters only ever go up while a scan runs.
+        entry["metrics"][key] = max(entry["metrics"].get(key, 0), value)
 
 
 def push(scan_id: str, message: str, level: str = "info") -> None:

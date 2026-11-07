@@ -95,6 +95,7 @@ export function useScanner() {
       // Progress estimate from the backend's step events:
       // "Étape i/n — tool1, tool2" starts a step; each "… terminé"/"échec" ends a tool.
       let pct = 10, stepBase = 10, stepSpan = 85, toolsInStep = 1, toolsDone = 0
+      let liveFindings = 0
       while (finalStatus === 'running') {
         await new Promise(r => setTimeout(r, 1200))
         let prog
@@ -134,6 +135,22 @@ export function useScanner() {
           }
           const last = events[events.length - 1]
           setMetrics(prev => ({ ...prev, step: last.message, percent: pct }))
+        }
+
+        // Live results: findings and counters appear as the tools report them.
+        if (Array.isArray(prog.findings) && prog.findings.length !== liveFindings) {
+          liveFindings = prog.findings.length
+          setFindings(prog.findings)
+        }
+        if (prog.metrics) {
+          const lm = prog.metrics
+          setMetrics(prev => ({
+            ...prev,
+            subdomains: lm.subdomains ?? prev.subdomains,
+            endpoints:  lm.endpoints  ?? prev.endpoints,
+            ports:      lm.ports      ?? prev.ports,
+            findings:   lm.findings   ?? prev.findings,
+          }))
         }
 
         if (prog.status !== 'running') {

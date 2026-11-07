@@ -10,6 +10,7 @@ from app.pipelines.dns_pipeline import DnsPipeline
 from app.pipelines.machine_pipeline import MachinePipeline
 from app.core import cache
 from app.core import progress as progress_store
+from app.core.metrics import compute_metrics as _compute_metrics
 import asyncio
 import shutil
 import time
@@ -78,6 +79,8 @@ async def _persist_and_finish(scan_id, target, target_type, results, from_cache,
 
 async def _run_scan_job(scan_id, target, target_type, force):
     started = time.perf_counter()
+    # Live findings/counters reported by the tools go to this scan's progress.
+    progress_store.bind(scan_id)
 
     async def prog(message, level="info"):
         progress_store.push(scan_id, message, level)
@@ -165,39 +168,6 @@ async def get_progress(scan_id: str):
     return state
 
 
-def _compute_metrics(raw: dict) -> dict:
-    """Derive dashboard metrics (subdomains / endpoints / ports) from a stored
-    pipeline result, regardless of which pipeline (URL / DNS / machine) produced it."""
-    subdomains = 0
-    endpoints = 0
-    ports = 0
-
-    if isinstance(raw, dict):
-        # Sous-domaines (DNS pipeline — subfinder)
-        sf = raw.get("subfinder_result", {})
-        if isinstance(sf, dict):
-            subdomains = len(sf.get("subfinder_subdomains", []) or [])
-
-        # Endpoints actifs : hôtes live (httpx) + endpoints crawlés (katana)
-        # + ressources brute-forcées (feroxbuster)
-        hx = raw.get("httpx_result", [])
-        if isinstance(hx, list):
-            endpoints += len(hx)
-        kat = raw.get("katana_result", {})
-        if isinstance(kat, dict):
-            endpoints += len(kat.get("katana_endpoints", []) or [])
-        fx = raw.get("feroxbuster_result", {})
-        if isinstance(fx, dict):
-            endpoints += len(fx.get("feroxbuster_resources", []) or [])
-
-        # Ports ouverts (machine pipeline — nmap)
-        nm = raw.get("nmap_result", {})
-        if isinstance(nm, dict):
-            ports = len(nm.get("open_ports", []) or [])
-
-    return {"subdomains": subdomains, "endpoints": endpoints, "ports": ports}
-
-
 @router.get("/results/{target_id}")
 async def get_results(target_id: str):
     results = await ScanResult.find(ScanResult.target_id == target_id).to_list()
@@ -205,11 +175,13 @@ async def get_results(target_id: str):
     metrics = {"subdomains": 0, "endpoints": 0, "ports": 0}
     for result in results:
         for vuln in result.vulnerabilities:
+            raw = vuln.raw_data or {}
             vulnerabilities.append({
                 "title": vuln.title,
                 "description": vuln.description,
                 "severity": vuln.severity,
-                "tool": result.toolName,
+                "tool": "nuclei" if raw.get("template-id") else result.toolName,
+                "target": raw.get("matched-at") or raw.get("host"),
             })
         m = _compute_metrics(result.rawJson)
         metrics["subdomains"] += m["subdomains"]

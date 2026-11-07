@@ -12,14 +12,16 @@ services:
       DATABASE_NAME: scanner
       NMAP_TOP_PORTS: "1000"
       NMAP_TIMING: "-T4"
-      # Keep nuclei within a small (1 GB) server: only the most relevant
-      # template families, low concurrency, and a hard time limit (seconds).
-      NUCLEI_TAGS: "cve,misconfig,exposure,xss,sqli,lfi,rce,ssrf,redirect,takeover,default-login"
-      NUCLEI_SEVERITY: "critical,high,medium"
-      NUCLEI_EXTRA_ARGS: "-c 5 -bs 5 -rl 50"
-      NUCLEI_TIMEOUT: "600"
-      # Make the Go tools (nuclei, katana, httpx, subfinder) free memory sooner.
-      GOMEMLIMIT: "300MiB"
+      # Nuclei settings are sized to the server's RAM by tune.sh (run by
+      # setup.sh / update.sh), which writes them into .env. The defaults below
+      # are the safe values for a 1 GB server.
+      # An empty NUCLEI_TAGS means "full template set".
+      NUCLEI_TAGS: ${NUCLEI_TAGS-cve,misconfig,exposure,xss,sqli,lfi,rce,ssrf,redirect,takeover,default-login}
+      NUCLEI_SEVERITY: ${NUCLEI_SEVERITY:-critical,high,medium}
+      NUCLEI_EXTRA_ARGS: ${NUCLEI_EXTRA_ARGS:--c 5 -bs 5 -rl 50}
+      NUCLEI_TIMEOUT: ${NUCLEI_TIMEOUT:-600}
+      # Soft memory limit for the Go tools (nuclei, katana, httpx, subfinder).
+      GOMEMLIMIT: ${GOMEMLIMIT:-300MiB}
     expose:
       - "8000"
 

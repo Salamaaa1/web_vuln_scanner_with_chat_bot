@@ -6,6 +6,7 @@ from app.models.target import Target
 from app.models.scan_result import ScanResult
 from app.executors.base import Executor, Worker
 from app.executors.factory import ExecutorFactory
+from app.core import progress as progress_store
 
 
 
@@ -52,6 +53,8 @@ class Step:
             if progress:
                 await progress(f"{worker.executor_name.strip()} : en cours…", "info")
             result = await worker.run()
+            # Update the live dashboard counters with what we have so far.
+            progress_store.report_partial(result)
             if progress:
                 res = result.get(f"{worker.executor_name.strip()}_result", {})
                 failed = isinstance(res, dict) and res.get("status") == "failed"

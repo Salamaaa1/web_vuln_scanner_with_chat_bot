@@ -21,9 +21,12 @@ class KatanaExecutor(Executor):
             try:
                 parsed_json = json.loads(line.strip())
                 
-                # Extraction intelligente de l'URL
-                discovered_url = parsed_json.get("request", {}).get("url", parsed_json.get("url", ""))
-                method = parsed_json.get("request", {}).get("method", "GET")
+                # Extraction intelligente de l'URL. Katana v1 writes it as
+                # request.endpoint; older versions used request.url / url.
+                req = parsed_json.get("request", {}) or {}
+                discovered_url = (req.get("endpoint") or req.get("url")
+                                  or parsed_json.get("endpoint") or parsed_json.get("url") or "")
+                method = req.get("method", "GET")
                 
                 if discovered_url:
                     # Clé d'unicité basée sur l'URL et la méthode de requête
