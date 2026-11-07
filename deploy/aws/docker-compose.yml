@@ -12,9 +12,14 @@ services:
       DATABASE_NAME: scanner
       NMAP_TOP_PORTS: "1000"
       NMAP_TIMING: "-T4"
-      # keep nuclei light enough for a small (1 GB) server
+      # Keep nuclei within a small (1 GB) server: only the most relevant
+      # template families, low concurrency, and a hard time limit (seconds).
+      NUCLEI_TAGS: "cve,misconfig,exposure,xss,sqli,lfi,rce,ssrf,redirect,takeover,default-login"
       NUCLEI_SEVERITY: "critical,high,medium"
-      NUCLEI_EXTRA_ARGS: "-c 10 -bs 10 -rl 100"
+      NUCLEI_EXTRA_ARGS: "-c 5 -bs 5 -rl 50"
+      NUCLEI_TIMEOUT: "600"
+      # Make the Go tools (nuclei, katana, httpx, subfinder) free memory sooner.
+      GOMEMLIMIT: "300MiB"
     expose:
       - "8000"
 

@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import shutil
+import signal
 import tempfile
 from datetime import datetime, timezone
 from app.Exception.tools_exception import NoDataFoundError, ToolInternalError, ToolNotFoundError
@@ -160,22 +161,58 @@ class NucleiExecutor(Executor):
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            # JSONL lines include the raw HTTP request/response and can be
+            # much larger than asyncio's 64 KiB default line limit.
+            limit=32 * 1024 * 1024,
+            # Own process group, so a timeout can stop nuclei and anything it spawned.
+            start_new_session=(os.name != "nt"),
         )
 
-        stdout, stderr = await proc.communicate()
+        # Read findings as they are printed, under a hard time limit
+        # (NUCLEI_TIMEOUT seconds, default 600). If the limit is hit, nuclei is
+        # stopped and the findings collected so far are kept, so a slow target
+        # or a small server never leaves the scan hanging forever.
+        timeout = float(os.getenv("NUCLEI_TIMEOUT", "600"))
+        out_lines = []
 
-        print("nuclei rc", proc.returncode, "stderr:", stderr.decode()[:300])
+        async def _collect_stdout():
+            async for line in proc.stdout:
+                out_lines.append(line)
+
+        stderr_task = asyncio.create_task(proc.stderr.read())
+        timed_out = False
+        try:
+            await asyncio.wait_for(_collect_stdout(), timeout=timeout)
+            await proc.wait()
+        except asyncio.TimeoutError:
+            timed_out = True
+            try:
+                if os.name != "nt":
+                    os.killpg(proc.pid, signal.SIGKILL)
+                else:
+                    proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+        try:
+            stderr = await asyncio.wait_for(stderr_task, timeout=5)
+        except asyncio.TimeoutError:
+            stderr_task.cancel()
+            stderr = b""
+        stdout = b"".join(out_lines)
+
+        print("nuclei rc", proc.returncode, "timed_out", timed_out, "stderr:", stderr.decode(errors="replace")[:300])
 
         # Nuclei can exit non-zero for benign reasons (e.g. a target went
         # unresponsive) while still producing valid findings on stdout. Only
         # treat it as a hard failure if it produced no output at all.
-        if proc.returncode != 0 and not stdout.strip():
-            raise ToolInternalError(stderr.decode(), tool_name="nuclei", message="Tool returned non-zero exit status.")
-        
+        if proc.returncode != 0 and not stdout.strip() and not timed_out:
+            raise ToolInternalError(stderr.decode(errors="replace"), tool_name="nuclei", message="Tool returned non-zero exit status.")
+
         result  =  self.parse(stdout , url_list)
-        
-        
+        result["timed_out"] = timed_out
+
         result["nuclei_status"] = "completed"
         data["nuclei_result"] = result
 

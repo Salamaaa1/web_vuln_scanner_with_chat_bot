@@ -122,6 +122,8 @@ export default function Home() {
           <ScanForm
             isRunning={isRunning}
             scan={scan}
+            progress={metrics.percent}
+            step={metrics.step}
             onStart={startScan}
             onStop={stopScan}
           />

@@ -19,7 +19,7 @@ const TYPE_COLORS = {
   url:    { color: '#F2A93B', label: 'URL' },
 }
 
-export default function ScanForm({ isRunning, scan, onStart, onStop }) {
+export default function ScanForm({ isRunning, scan, onStart, onStop, progress: progressProp, step }) {
   const [target, setTarget] = useState('')
   const detectedType = detectType(target.trim())
 
@@ -27,8 +27,8 @@ export default function ScanForm({ isRunning, scan, onStart, onStop }) {
     if (target.trim() && !isRunning) onStart(target.trim())
   }
 
-  const progress = scan?.percent ?? 0
-  const stepLabel = scan?.step ?? ''
+  const progress = progressProp ?? scan?.percent ?? 0
+  const stepLabel = step ?? scan?.step ?? ''
 
   return (
     <div style={{

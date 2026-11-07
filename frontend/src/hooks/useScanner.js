@@ -92,6 +92,9 @@ export function useScanner() {
       // 3. Suivre la progression en temps réel (polling du live-console)
       let seen = 0
       let finalStatus = 'running'
+      // Progress estimate from the backend's step events:
+      // "Étape i/n — tool1, tool2" starts a step; each "… terminé"/"échec" ends a tool.
+      let pct = 10, stepBase = 10, stepSpan = 85, toolsInStep = 1, toolsDone = 0
       while (finalStatus === 'running') {
         await new Promise(r => setTimeout(r, 1200))
         let prog
@@ -115,8 +118,22 @@ export function useScanner() {
               message: e.message,
             })),
           ])
+          for (const e of fresh) {
+            const msg = e.message || ''
+            const m = /Étape (\d+)\/(\d+)\s*[—-]\s*(.*)$/.exec(msg)
+            if (m) {
+              const i = Number(m[1]), n = Number(m[2]) || 1
+              stepSpan = 85 / n
+              stepBase = 10 + (i - 1) * stepSpan
+              toolsInStep = Math.max(1, m[3].split(',').length)
+              toolsDone = 0
+            } else if (/(terminé|arrêté|échec)/.test(msg)) {
+              toolsDone = Math.min(toolsInStep, toolsDone + 1)
+            }
+            pct = Math.max(pct, Math.min(95, Math.round(stepBase + stepSpan * (toolsDone / toolsInStep))))
+          }
           const last = events[events.length - 1]
-          setMetrics(prev => ({ ...prev, step: last.message }))
+          setMetrics(prev => ({ ...prev, step: last.message, percent: pct }))
         }
 
         if (prog.status !== 'running') {

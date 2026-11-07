@@ -32,7 +32,10 @@ def _summarize_worker(name: str, result: dict) -> str:
             n = len((result.get("nmap_result", {}) or {}).get("open_ports", []) or [])
             return f"nmap terminé — {n} port(s) ouvert(s)"
         if name == "nuclei":
-            n = len((result.get("nuclei_result", {}) or {}).get("vulnerabilities", []) or [])
+            res = result.get("nuclei_result", {}) or {}
+            n = len(res.get("vulnerabilities", []) or [])
+            if res.get("timed_out"):
+                return f"nuclei arrêté (limite de temps atteinte) — {n} vulnérabilité(s) trouvée(s)"
             return f"nuclei terminé — {n} vulnérabilité(s)"
     except Exception:
         pass
